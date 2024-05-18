@@ -1,16 +1,35 @@
 import streamlit as st
-
-# import pandas as pd
-# import numpy as np
+from icecream import ic
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, isnan, when, count
+from pyspark.sql.functions import col, to_timestamp
 import os
 from dotenv import load_dotenv
 from iexfinance.refdata import get_symbols
-from iexfinance.stocks import Stock
 from iexfinance.stocks import get_historical_data
 from datetime import datetime
-import requests
+import pandas as pd
+from pyspark.sql.types import DoubleType, StringType, TimestampType
+from pyspark.sql import functions as F
+
+# def obj2num(df):
+#     for column in df.columns:
+#         if df.schema[column].dataType == StringType():
+#             # Attempt to convert to numeric (double)
+#             df = df.withColumn(column,
+#                                F.when(
+#                                    col(column).cast(DoubleType()).isNotNull(),
+#                                    col(column).cast(DoubleType())
+#                                ).when(
+#                                    col(column).cast(LongType()).isNotNull(),
+#                                    col(column).cast(DoubleType())
+#                                ).otherwise(col(column)))
+#             # Attempt to convert to timestamp
+#             df = df.withColumn(column,
+#                                F.when(
+#                                    to_timestamp(col(column), "yyyy-MM-dd HH:mm:ss").isNotNull(),
+#                                    to_timestamp(col(column), "yyyy-MM-dd HH:mm:ss")
+#                                ).otherwise(col(column)))
+#     return df
 
 
 @st.cache_resource
@@ -28,7 +47,7 @@ API_KEY = os.environ.get("apikey")
 
 
 def get_stock_data(symbol):
-    """get stock data from api by period of time"""
+    """Get stock data from API by period of time"""
     today = datetime.now()
     start = datetime(today.year, 1, 1)
     end = datetime(today.year, today.month, today.day)
@@ -39,31 +58,32 @@ def get_stock_data(symbol):
             [start, end],
             format="MM/DD/YYYY",
         )
-    except:
+    except Exception as e:
         st.error(
-            f"Please select a valid date range, Start and end dates must be before current date",
+            f"Please select a valid date range. Start and end dates must be before the current date: {e}",
             icon="📆",
         )
-    df = get_historical_data(symbol, start, end, token=API_KEY)
-    for col in df.columns:
-        if df[col].dtype in ["int64", "float64"]:
-            df[col] = df[col].astype(float)
+        return
+
+    df = get_historical_data(symbol, start, end, token=API_KEY, output_format="pandas")
+    ic(df.dtypes)
+    df = df.dropna()
+    df = df.astype(str)
     df_pyspark = spark.createDataFrame(df)
-    cleaned_df = df_pyspark.na.drop()
-    print(
-        cleaned_df.select(
-            [
-                count(when(isnan(c) | col(c).isNull(), c)).alias(c)
-                for c in cleaned_df.columns
-            ]
-        ).show()
-    )
-    return cleaned_df
+    ic(df_pyspark.dtypes)
+
+    return df_pyspark
 
 
-st.title("Stock management Web-app")
+st.title("Stock Management Web-app")
 
-sym = st.selectbox(
-    "Choose a company from where to retrieve data :", get_symbols(token=API_KEY)
-)
-st.write(get_stock_data(sym))
+
+@st.cache_data
+def symbol_lst():
+    return get_symbols(token=API_KEY)
+
+
+sym = st.selectbox("Choose a company from where to retrieve data:", symbol_lst())
+stock_data = get_stock_data(sym)
+if stock_data:
+    st.write(stock_data)
