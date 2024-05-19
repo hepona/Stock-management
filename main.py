@@ -10,26 +10,8 @@ from datetime import datetime
 import pandas as pd
 from pyspark.sql.types import DoubleType, StringType, TimestampType
 from pyspark.sql import functions as F
-
-# def obj2num(df):
-#     for column in df.columns:
-#         if df.schema[column].dataType == StringType():
-#             # Attempt to convert to numeric (double)
-#             df = df.withColumn(column,
-#                                F.when(
-#                                    col(column).cast(DoubleType()).isNotNull(),
-#                                    col(column).cast(DoubleType())
-#                                ).when(
-#                                    col(column).cast(LongType()).isNotNull(),
-#                                    col(column).cast(DoubleType())
-#                                ).otherwise(col(column)))
-#             # Attempt to convert to timestamp
-#             df = df.withColumn(column,
-#                                F.when(
-#                                    to_timestamp(col(column), "yyyy-MM-dd HH:mm:ss").isNotNull(),
-#                                    to_timestamp(col(column), "yyyy-MM-dd HH:mm:ss")
-#                                ).otherwise(col(column)))
-#     return df
+from chart import *
+from helper import *
 
 
 @st.cache_resource
@@ -69,6 +51,7 @@ def get_stock_data(symbol):
     ic(df.dtypes)
     df = df.dropna()
     df = df.astype(str)
+    df = fix_coltype(df)
     df_pyspark = spark.createDataFrame(df)
     ic(df_pyspark.dtypes)
 
@@ -87,3 +70,4 @@ sym = st.selectbox("Choose a company from where to retrieve data:", symbol_lst()
 stock_data = get_stock_data(sym)
 if stock_data:
     st.write(stock_data)
+bar_plot(stock_data, "symbol", "volume")
